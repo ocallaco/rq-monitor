@@ -1,6 +1,8 @@
 local rc = require 'redis-async'
 local rs = require 'redis-status.server'
+local rsp = require 'redis-status.protocol'
 local rq = require 'redis-queue'
+
 
 local uv = require 'luv'
 local async = require 'async'
@@ -112,7 +114,6 @@ end)
 local commandbar = {}
 
 
-
 local HEIGHT = 10
 local WIDTH = 40
 local ROWS = 6
@@ -219,6 +220,9 @@ local onStatus = function(nodename, workername, status)
    updateNode(nodename)
 end
 
+--TODO: fix this. not really clean to do this with server available when possibly not initialized
+local server
+
 fiber(function()
 
    local writecli = wait(rc.connect, {redis_details})
@@ -228,14 +232,125 @@ fiber(function()
    table.insert(clients, subcli)
 
 
-   local server = rs(writecli, subcli, "RQ", {onStatus = onStatus, onWorkerReady = onNewWorker, onNodeReady = onNewNode, onDeadWorker = onDeadWorker})
-
-   for i,node in ipairs(node_names) do
-      server.issueCommand({"CONTROLCHANNEL:RQ:" .. node}, "restart", function(res)  end)
-   end
-
+   server = rs(writecli, subcli, "RQ", {onStatus = onStatus, onWorkerReady = onNewWorker, onNodeReady = onNewNode, onDeadWorker = onDeadWorker})
+   
 end)
 
+-- handle commands from the keyboard
+
+
+local set_selected_box = function(box)
+   if box then
+      keyhandler.onUpArrow = function()
+         box.scroll(-1,0)
+         box.redraw()
+      end
+      keyhandler.onDownArrow = function()
+         box.scroll(1,0)
+         box.redraw()
+      end
+      keyhandler.onRightArrow = function()
+         box.scroll(0,1)
+         box.redraw()
+      end
+      keyhandler.onLeftArrow = function()
+         box.scroll(0,-1)
+         box.redraw()
+      end
+   else
+      keyhandler.onUpArrow = function()
+         commandbar.box.scroll(-1,0)
+         commandbar.box.redraw()
+      end
+      keyhandler.onDownArrow = function()
+         commandbar.box.scroll(1,0)
+         commandbar.box.redraw()
+      end
+      keyhandler.onRightArrow = function()
+         commandbar.box.scroll(0,1)
+         commandbar.box.redraw()
+      end
+      keyhandler.onLeftArrow = function()
+         commandbar.box.scroll(0,-1)
+         commandbar.box.redraw()
+      end
+   end
+end
+
+
+commandbar.state = "BASE"
+
+local base_commands = [[
+(n)   node select
+]]
+
+local set_base_state = function()
+   commandbar.state = "BASE"
+   commandbar.box.settext(base_commands)
+   commandbar.box.redraw() 
+   set_selected_box(nil)
+   commandbar.selected_node = nil
+end
+
+local set_node_state = function()
+   commandbar.state = "NODE"
+   local node_text_list = {}
+   for i,nodename in ipairs(node_names) do
+      table.insert(node_text_list, "(" .. i .. ") ")
+      table.insert(node_text_list, nodename)
+      table.insert(node_text_list, "\n")
+   end
+
+   commandbar.box.settext(table.concat(node_text_list))
+   commandbar.box.redraw() 
+end
+
+local set_command_state = function()
+   commandbar.state = "COMMAND"
+   command_text_list = {}
+   for i,command in ipairs(rsp.standard_commands) do
+      table.insert(command_text_list, "(" .. i .. ") ")
+      table.insert(command_text_list, command)
+      table.insert(command_text_list, "\n")
+   end
+   commandbar.box.settext(table.concat(command_text_list))
+   commandbar.box.redraw() 
+end
+
+keyhandler.handleInput = function(data)
+   if commandbar.state == "BASE" then
+      local input = data:sub(1,1)
+      if input == "n" then
+         set_node_state()
+      end
+      --TODO: make this handle numbers higher than 9
+   elseif commandbar.state == "NODE" then
+      local comnumber = tonumber(data)
+      if comnumber then
+         local nodename = node_names[comnumber]
+         commandbar.selected_node = nodename
+         curses.printw(nodename)
+         set_selected_box(nodes[nodename].box)
+         set_command_state()
+      end
+   elseif commandbar.state == "COMMAND" then
+      local comnumber = tonumber(data)
+      if comnumber then
+         local commandname = rsp.standard_commands[comnumber]
+
+         if commandbar.selected_node then
+            server.issueCommand({"CONTROLCHANNEL:RQ:" .. commandbar.selected_node}, commandname, function(res)  end)
+         else
+            for i,node in ipairs(node_names) do
+               server.issueCommand({"CONTROLCHANNEL:RQ:" .. node}, commandname, function(res)  end)
+            end
+         end
+         set_base_state()
+      end
+   end
+end
+
+keyhandler.onEscape = set_base_state
 
 async.go()
 

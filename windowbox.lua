@@ -16,7 +16,8 @@ return function(height, width, starty, startx, parentbox)
    box.redraw = function()
       local lines = math.min(height, #box.text - box.curpos[1])
       for i=1,lines do
-         local line = box.text[i +  box.curpos[1]]:sub(box.curpos[2], box.curpos[2] + width)
+         local l1 = box.text[i +  box.curpos[1]] or ""
+         local line = l1:sub(box.curpos[2], box.curpos[2] + width)
          curses.mvwprintw(box.win, i, 1, line)
          curses.wclrtoeol(box.win)
       end
