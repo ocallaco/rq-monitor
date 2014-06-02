@@ -54,6 +54,9 @@ local keyhandler = {
    end
 }
 
+local timers = {}
+local clients = {}
+
 local stdin = handle(io.stdin)
 
 stdin.ondata(function(data)
@@ -61,6 +64,15 @@ stdin.ondata(function(data)
    -- exit on ^C and ^D
    if v == 3 or v == 4 then
       uv.tty_set_mode(io.stdin, 0)
+      curses.endwin()
+      for timer in ipairs(timers) do
+         timer.clear()
+      end
+
+      for client in ipairs(clients) do
+         client.close()
+      end
+
       os.exit()
    end
    
@@ -157,7 +169,7 @@ local update_last_seen = function()
    refresh()
 end
 
-async.setInterval(1000, update_last_seen)
+table.insert(timers, async.setInterval(1000, update_last_seen))
 
 local updateNode = function(nodename, workername)
    local nodeEntry = nodes[nodename]
@@ -212,6 +224,9 @@ fiber(function()
 
    local writecli = wait(rc.connect, {redis_details})
    local subcli = wait(rc.connect, {redis_details})
+
+   table.insert(clients, writecli)
+   table.insert(clients, subcli)
 
 
    local server = rs(writecli, subcli, "RQ", {onStatus = onStatus, onWorkerReady = onNewWorker, onNodeReady = onNewNode})
