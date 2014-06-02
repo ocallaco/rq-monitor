@@ -9,6 +9,8 @@ local handle = require 'async.handle'
 
 local curses = require 'ncurses'
 
+local windowbox = require './windowbox.lua'
+
 redis_details = {host='localhost', port=6379}
 
 local opt = lapp([[
@@ -107,71 +109,40 @@ end)
 
 
 -- Set up the display
-local display = {
-   commandbar = {},
-   display_area = {}
-}
+local commandbar = {}
 
---  window helper functions
-local function create_newwin(height, width, starty, startx)
-   local local_win;
-	local_win = curses.newwin(height, width, starty, startx)
-	curses.box(local_win, 0 , 0)		
-   curses.wrefresh(local_win)
-	return local_win;
-end
-
-local function refresh()
-   curses.box(display.commandbar.win, 0 , 0)	
-   curses.wrefresh(display.commandbar.win)
-
-   for i,win in pairs(display.display_area.node_wins) do
-      curses.box(win, 0 , 0)	
-      curses.wrefresh(win)
-   end
-
-   curses.refresh()
-
-end
 
 
 local HEIGHT = 10
 local WIDTH = 40
 local ROWS = 6
 
+local display_startx = 0
+local display_starty = 0
 
 if not opt.print then
    curses.initscr()
-   display.width = curses.getmaxx(curses.stdscr)
-   display.height = curses.getmaxy(curses.stdscr)
-   ROWS = math.floor(display.height / HEIGHT )
-   display.commandbar.width = math.floor(display.width / 4)
-   display.commandbar.height = display.height 
-   display.commandbar.win = create_newwin(display.commandbar.height, display.commandbar.width, 0, 0)
 
-   display.display_area.startx = display.commandbar.width + 1
-   display.display_area.starty = 0
+   local width = curses.getmaxx(curses.stdscr)
+   local height = curses.getmaxy(curses.stdscr)
+
+   commandbar.width = math.floor(width / 4)
+   commandbar.height = height 
+   commandbar.box = windowbox(commandbar.height, commandbar.width, 0, 0)
+
+   display_startx = commandbar.width + 1
+   display_starty = 0
+
+   ROWS = math.floor(height / HEIGHT )
 end
 
 
 -- set up node and worker representation
 local nodes = {}
 local node_names = {}
-display.display_area.node_wins = {}
 
-local update_last_seen = function()
-   for i,nodename in ipairs(node_names) do
-      local nodeEntry = nodes[nodename]
-      local win = display.display_area.node_wins[nodename]
-      curses.mvwprintw(win, 3, 1, "Last Seen: " .. getTimeAgo(tonumber(nodeEntry.last_seen)) .. " ago")
-   end
 
-   refresh()
-end
-
-table.insert(timers, async.setInterval(1000, update_last_seen))
-
-local updateNode = function(nodename, workername)
+local updateNode = function(nodename)
    local nodeEntry = nodes[nodename]
 
    if opt.print then
@@ -179,45 +150,73 @@ local updateNode = function(nodename, workername)
       return
    end
 
-   local win = display.display_area.node_wins[nodename]
+   local box = nodeEntry.box
 
-   curses.mvwprintw(win, 1, 1, nodename)
-   curses.mvwprintw(win, 2, 1, "Number of workers: " .. #nodeEntry.worker_names)
-   curses.mvwprintw(win, 3, 1, "Last Seen: " .. getTimeAgo(tonumber(nodeEntry.last_seen)) .. " ago")
+   local text_tbl = {}
+
+   table.insert(text_tbl, nodename)
+   table.insert(text_tbl, "\n")
+   table.insert(text_tbl, "Number of workers: " .. #nodeEntry.worker_names)
+   table.insert(text_tbl, "\n")
+   table.insert(text_tbl, "Last Seen: " .. getTimeAgo(tonumber(nodeEntry.last_seen)) .. " ago")
+   table.insert(text_tbl, "\n")
 
    for i,workername in ipairs(nodeEntry.worker_names) do
-      curses.mvwprintw(win, 3 + i, 1, "Worker: " .. workername)   
+      table.insert(text_tbl, "Worker: " .. workername)   
+      table.insert(text_tbl, "\n")
    end
-
-   curses.box(win, 0 , 0)	
-   curses.wrefresh(win)
-   curses.refresh()
+   
+   box.settext(table.concat(text_tbl))
+   box.redraw()
 end
 
-local onNewNode = function(name)
-   table.insert(node_names,name)
-   nodes[name] = {workers = {}, last_seen = os.time(), worker_names = {}}
+local update_last_seen = function()
+   for i,nodename in ipairs(node_names) do
+      updateNode(nodename)
+   end
+end
+
+table.insert(timers, async.setInterval(1000, update_last_seen))
+
+local onNewNode = function(nodename)
+   table.insert(node_names,nodename)
+   local nodeEntry = {workers = {}, last_seen = os.time(), worker_names = {}}
    
    local numnodes = #node_names - 1
-   local startx = math.floor(numnodes / ROWS) * WIDTH
-   local starty = math.floor(numnodes * HEIGHT) % (ROWS * HEIGHT)
-   if opt.print then
-      print(display)
-   end
-   display.display_area.node_wins[name] = create_newwin(HEIGHT, WIDTH, display.display_area.starty, display.display_area.startx)
+   local startx = display_startx + math.floor(numnodes / ROWS) * WIDTH
+   local starty = display_starty + math.floor(numnodes * HEIGHT) % (ROWS * HEIGHT)
+
+   nodeEntry.box = windowbox(HEIGHT, WIDTH, starty, startx)
+   nodes[nodename] = nodeEntry
+   updateNode(nodename)
 end
 
 local onNewWorker = function(nodename, workername)
    nodes[nodename].workers[workername] = {last_seen = os.time()}
    table.insert(nodes[nodename].worker_names, workername)
+   updateNode(nodename)
 end
+
+local onDeadWorker = function(nodename, workername)
+   nodes[nodename].workers[workername] = nil
+   local index
+   for i,w in ipairs(nodes[nodename].worker_names) do
+      if w == workername then 
+         index = i
+         break 
+      end
+   end
+   table.remove(nodes[nodename].worker_names, index)
+   updateNode(nodename)
+end
+
 
 local onStatus = function(nodename, workername, status)
    --print(nodes)
    nodes[nodename].workers[workername].status = status
    nodes[nodename].workers[workername].last_seen = os.time()
    nodes[nodename].last_seen = os.time()
-   updateNode(nodename, workername)
+   updateNode(nodename)
 end
 
 fiber(function()
@@ -229,7 +228,7 @@ fiber(function()
    table.insert(clients, subcli)
 
 
-   local server = rs(writecli, subcli, "RQ", {onStatus = onStatus, onWorkerReady = onNewWorker, onNodeReady = onNewNode})
+   local server = rs(writecli, subcli, "RQ", {onStatus = onStatus, onWorkerReady = onNewWorker, onNodeReady = onNewNode, onDeadWorker = onDeadWorker})
 
    for i,node in ipairs(node_names) do
       server.issueCommand({"CONTROLCHANNEL:RQ:" .. node}, "restart", function(res)  end)

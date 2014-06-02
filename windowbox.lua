@@ -1,5 +1,6 @@
 local curses = require 'ncurses'
 
+--TODO: make resizable and movable 
 return function(height, width, starty, startx, parentbox)
    local box = {}
 
