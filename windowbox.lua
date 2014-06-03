@@ -41,8 +41,8 @@ return function(height, width, starty, startx, parentbox)
    box.curpos = {0,0}
    -- (up -1 down +1), (left -1 right +1)
    box.scroll = function(ud, lr)
-      box.curpos[1] = math.min(math.max(0, box.curpos[1] + ud), #box.text - height + 1) -- add 1 because of border
-      box.curpos[2] = math.min(math.max(0, box.curpos[2] + lr), widest_line - width + 3) -- adding 2 because of borders
+      box.curpos[1] = math.max(0, math.min(box.curpos[1] + ud, #box.text - height + 1)) -- add 1 because of border
+      box.curpos[2] = math.max(0, math.min(box.curpos[2] + lr, widest_line - width + 3)) -- adding 2 because of borders
    end
 
    return box

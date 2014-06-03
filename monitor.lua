@@ -2,7 +2,7 @@ local rc = require 'redis-async'
 local rs = require 'redis-status.server'
 local rsp = require 'redis-status.protocol'
 local rq = require 'redis-queue'
-
+local io_manager = require './io.lua'
 
 local uv = require 'luv'
 local async = require 'async'
@@ -20,7 +20,6 @@ thnode: a Torch compute node
    -p,--print dont use ncurses
    -c, --cfg load a config file
 ]])
-
 
 -- helper function
 local function getTimeAgo(ts)
@@ -40,78 +39,16 @@ end
 
 -- IO Handler:
 --start reading 
-io.stdin = uv.new_tty(0,1)
-uv.tty_set_mode(io.stdin, 1)
-
-local keyhandler = {
-   onUpArrow = function()
-   end,
-   onDownArrow = function()
-   end,
-   onRightArrow = function()
-   end,
-   onLeftArrow = function()
-   end,
-   onEscape = function()
-   end,
-   handleInput = function(data)
-   end
-}
 
 local timers = {}
 local clients = {}
 
-local stdin = handle(io.stdin)
-
-stdin.ondata(function(data)
-   local v = data:byte()
-   -- exit on ^C and ^D
-   if v == 3 or v == 4 then
-      uv.tty_set_mode(io.stdin, 0)
-      curses.endwin()
-      for timer in ipairs(timers) do
-         timer.clear()
-      end
-
-      for client in ipairs(clients) do
-         client.close()
-      end
-
-      os.exit()
-   end
-   
-   if v == 27 then
-      local nextbyte = data:byte(2)
-      if not nextbyte then
-         keyhandler.onEscape()
-         return
-      end
-
-      if nextbyte == 91 then
-         dirbyte = data:byte(3)
-         if dirbyte == 65 then
-            keyhandler.onUpArrow()
-            return
-         elseif dirbyte == 66 then
-            keyhandler.onDownArrow()
-            return
-         elseif dirbyte == 67 then
-            keyhandler.onRightArrow()
-            return
-         elseif dirbyte == 68 then
-            keyhandler.onLeftArrow()
-            return
-         end
-      end
-   end
-
-   keyhandler.handleInput(data)
-
-end)
+local iomanager = io_manager(timers, clients)
 
 
 -- Set up the display
 local commandbar = {}
+local debugbar = {}
 
 
 local HEIGHT = 10
@@ -128,8 +65,19 @@ if not opt.print then
    local height = curses.getmaxy(curses.stdscr)
 
    commandbar.width = math.floor(width / 4)
-   commandbar.height = height 
+   commandbar.height = height  - 11
    commandbar.box = windowbox(commandbar.height, commandbar.width, 0, 0)
+
+   debugbar.width = commandbar.width
+   debugbar.height = 10
+   debugbar.box = windowbox(debugbar.height, debugbar.width, commandbar.height+1, 0)
+
+   -- put text buffer on debug bar
+   iomanager.onBuffer(function(data)
+      debugbar.box.settext(data)
+      debugbar.box.redraw()
+   end)
+
 
    display_startx = commandbar.width + 1
    display_starty = 0
@@ -241,39 +189,40 @@ end)
 
 local set_selected_box = function(box)
    if box then
-      keyhandler.onUpArrow = function()
+      iomanager.onUpArrow(function()
          box.scroll(-1,0)
          box.redraw()
-      end
-      keyhandler.onDownArrow = function()
+      end)
+
+      iomanager.onDownArrow(function()
          box.scroll(1,0)
          box.redraw()
-      end
-      keyhandler.onRightArrow = function()
+      end)
+      iomanager.onRightArrow(function()
          box.scroll(0,1)
          box.redraw()
-      end
-      keyhandler.onLeftArrow = function()
+      end)
+      iomanager.onLeftArrow(function()
          box.scroll(0,-1)
          box.redraw()
-      end
+      end)
    else
-      keyhandler.onUpArrow = function()
+      iomanager.onUpArrow(function()
          commandbar.box.scroll(-1,0)
          commandbar.box.redraw()
-      end
-      keyhandler.onDownArrow = function()
+      end)
+      iomanager.onDownArrow(function()
          commandbar.box.scroll(1,0)
          commandbar.box.redraw()
-      end
-      keyhandler.onRightArrow = function()
+      end)
+      iomanager.onRightArrow(function()
          commandbar.box.scroll(0,1)
          commandbar.box.redraw()
-      end
-      keyhandler.onLeftArrow = function()
+      end)
+      iomanager.onLeftArrow(function()
          commandbar.box.scroll(0,-1)
          commandbar.box.redraw()
-      end
+      end)
    end
 end
 
@@ -282,6 +231,7 @@ commandbar.state = "BASE"
 
 local base_commands = [[
 (n)   node select
+(g)   group select
 ]]
 
 local set_base_state = function()
@@ -290,9 +240,12 @@ local set_base_state = function()
    commandbar.box.redraw() 
    set_selected_box(nil)
    commandbar.selected_node = nil
+   
+   iomanager.unbuffered_mode()
 end
 
 local set_node_state = function()
+   -- outside of base state, want buffered input
    commandbar.state = "NODE"
    local node_text_list = {}
    for i,nodename in ipairs(node_names) do
@@ -303,6 +256,13 @@ local set_node_state = function()
 
    commandbar.box.settext(table.concat(node_text_list))
    commandbar.box.redraw() 
+   
+   iomanager.buffered_mode()
+end
+
+local set_group_state = function()
+   commandbar.state = "GROUP" 
+   iomanager.buffered_mode()
 end
 
 local set_command_state = function()
@@ -315,9 +275,11 @@ local set_command_state = function()
    end
    commandbar.box.settext(table.concat(command_text_list))
    commandbar.box.redraw() 
+
+   iomanager.buffered_mode()
 end
 
-keyhandler.handleInput = function(data)
+iomanager.handleInput(function(data)
    if commandbar.state == "BASE" then
       local input = data:sub(1,1)
       if input == "n" then
@@ -348,9 +310,9 @@ keyhandler.handleInput = function(data)
          set_base_state()
       end
    end
-end
+end)
 
-keyhandler.onEscape = set_base_state
+iomanager.onEscape(set_base_state)
 
 async.go()
 
