@@ -1,6 +1,5 @@
 local rc = require 'redis-async'
 local rs = require 'redis-status.server'
-local rsp = require 'redis-status.protocol'
 local rq = require 'redis-queue'
 local io_manager = require './io.lua'
 
@@ -13,13 +12,25 @@ local curses = require 'ncurses'
 
 local windowbox = require './windowbox.lua'
 
+local monitor_config = require './config'
+
 redis_details = {host='localhost', port=6379}
 
 local opt = lapp([[
 thnode: a Torch compute node
    -p,--print dont use ncurses
-   -c, --cfg load a config file
+   -c, --cfg (string) load a config file
 ]])
+
+local config
+if opt.cfg then
+   print(opt.cfg)
+   local config_table = require(opt.cfg)
+   config = monitor_config(config_table)
+else
+   config = monitor_config({})
+end
+
 
 -- helper function
 local function getTimeAgo(ts)
@@ -68,7 +79,7 @@ if not opt.print then
    commandbar.height = height  - 11
    commandbar.box = windowbox(commandbar.height, commandbar.width, 0, 0)
 
-   debugbar.width = commandbar.width
+   debugbar.width = width
    debugbar.height = 10
    debugbar.box = windowbox(debugbar.height, debugbar.width, commandbar.height+1, 0)
 
@@ -82,7 +93,7 @@ if not opt.print then
    display_startx = commandbar.width + 1
    display_starty = 0
 
-   ROWS = math.floor(height / HEIGHT )
+   ROWS = math.floor((height - 11) / HEIGHT )
 end
 
 
@@ -265,10 +276,16 @@ local set_group_state = function()
    iomanager.buffered_mode()
 end
 
+local set_repl_state = function()
+   commandbar.state = "REPL"
+   -- print output to debug window
+   iomanager.buffered_mode()
+end
+
 local set_command_state = function()
    commandbar.state = "COMMAND"
    command_text_list = {}
-   for i,command in ipairs(rsp.standard_commands) do
+   for i,command in ipairs(config.command_list) do
       table.insert(command_text_list, "(" .. i .. ") ")
       table.insert(command_text_list, command)
       table.insert(command_text_list, "\n")
@@ -277,6 +294,31 @@ local set_command_state = function()
    commandbar.box.redraw() 
 
    iomanager.buffered_mode()
+end
+
+local execute_command = function(comnumber)
+   local commandname = config.command_list[comnumber]
+
+   local command = config.commands[commandname]
+
+   if command.args == "REPL" then
+      -- put the command name onto the buffer
+      iomanager.add_to_buffer(command.name or commandname .. "(")
+      set_repl_state()
+      return
+   end
+
+   if commandbar.selected_node then
+      server.issueCommand({"CONTROLCHANNEL:RQ:" .. commandbar.selected_node}, commandname, command.args or {}, function(res)  end)
+   else
+      -- figure out selected node group
+      for i,node in ipairs(node_names) do
+         server.issueCommand({"CONTROLCHANNEL:RQ:" .. node}, commandname, command.args or {}, function(res)  end)
+      end
+   end
+
+   set_base_state()
+
 end
 
 iomanager.handleInput(function(data)
@@ -298,16 +340,7 @@ iomanager.handleInput(function(data)
    elseif commandbar.state == "COMMAND" then
       local comnumber = tonumber(data)
       if comnumber then
-         local commandname = rsp.standard_commands[comnumber]
-
-         if commandbar.selected_node then
-            server.issueCommand({"CONTROLCHANNEL:RQ:" .. commandbar.selected_node}, commandname, function(res)  end)
-         else
-            for i,node in ipairs(node_names) do
-               server.issueCommand({"CONTROLCHANNEL:RQ:" .. node}, commandname, function(res)  end)
-            end
-         end
-         set_base_state()
+         execute_command(comnumber) 
       end
    end
 end)

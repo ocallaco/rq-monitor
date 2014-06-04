@@ -3,6 +3,8 @@ local handle = require 'async.handle'
 local uv = require 'luv'
 
 return function(timers, clients)
+   -- TODO: keyhandler[keystroke] should point to the handler function for each key
+   -- if it's a multiple key sequence (up arrow, etc) then have it point to a similar table
    local keyhandler = {
       onUpArrow = function()
       end,
@@ -14,19 +16,16 @@ return function(timers, clients)
       end,
       onEscape = function()
       end,
+      onBuffer = function(data)
+      end,
       handleInput = function(data)
       end,
-      onBuffer = function(data)
-      end
    }
 
-   local last_input
    local buffered = false
    local buffer = {}
 
    local handle_function = function(data)
-
-      last_input = data
 
       local v = data:byte()
       local nextbyte = data:byte(2)
@@ -130,16 +129,17 @@ return function(timers, clients)
       keyhandler.onEscape = cb
    end
 
+   io_manager.onBuffer = function(cb)
+      keyhandler.onBuffer = cb
+   end
+   
    io_manager.handleInput = function(cb)
       keyhandler.handleInput = cb
    end
 
-   io_manager.onBuffer = function(cb)
-      keyhandler.onBuffer = cb
-   end
-
-   io_manager.get_last_input = function()
-      return last_input
+   io_manager.add_to_buffer = function(text)
+      table.insert(buffer, text)
+      keyhandler.onBuffer(table.concat(buffer))
    end
 
    return io_manager
