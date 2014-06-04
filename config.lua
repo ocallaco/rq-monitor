@@ -49,5 +49,6 @@ return function(config)
    table.sort(groups)
    base_config.group_list = groups
 
+   base_config.node_repls = config.node_repls or {}
    return base_config
 end

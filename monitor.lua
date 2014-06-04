@@ -7,6 +7,7 @@ local uv = require 'luv'
 local async = require 'async'
 local fiber = require 'async.fiber'
 local handle = require 'async.handle'
+local tcp = require 'async.tcp'
 
 local curses = require 'ncurses'
 
@@ -60,6 +61,7 @@ local iomanager = io_manager(timers, clients)
 -- Set up the display
 local commandbar = {}
 local debugbar = {}
+local outputbar = {}
 
 
 local HEIGHT = 10
@@ -76,15 +78,25 @@ if not opt.print then
    local height = curses.getmaxy(curses.stdscr)
 
    commandbar.width = math.floor(width / 4)
-   commandbar.height = height  - 11
+   commandbar.height = height  - 21
    commandbar.box = windowbox(commandbar.height, commandbar.width, 0, 0)
 
    debugbar.width = width
-   debugbar.height = 10
+   debugbar.height = 5
    debugbar.box = windowbox(debugbar.height, debugbar.width, commandbar.height+1, 0)
+
+   outputbar.width = width
+   outputbar.height = 15
+   outputbar.box = windowbox(outputbar.height, outputbar.width, debugbar.height + commandbar.height+1, 0)
+   outputbar.box.setscrolllock(false)
+
 
    -- put text buffer on debug bar
    iomanager.onBuffer(function(data)
+      if data == "" then
+         data = "\n"
+      end
+
       debugbar.box.settext(data)
       debugbar.box.redraw()
    end)
@@ -93,9 +105,56 @@ if not opt.print then
    display_startx = commandbar.width + 1
    display_starty = 0
 
-   ROWS = math.floor((height - 11) / HEIGHT )
+   ROWS = math.floor((height - 21) / HEIGHT )
 end
 
+local replclient
+local replbuffer = {}
+
+
+local endrepl = function()
+   if replclient then replclient.close() end
+   replclient = nil
+end
+
+
+local writetorepl = function()
+end
+
+
+local setrepl = function(domain)
+
+   -- i hope we can just drop the old client and replace it with a new one without waiting for a callback
+   if replclient then
+      endrepl()
+   end
+
+   tcp.connect(domain, function(client)
+      -- receive results from server
+      client.ondata(function(data)
+         outputbar.box.append(data)
+         outputbar.box.redraw()
+      end)
+
+      replclient = client
+
+      writetorepl = function(data)
+         client.write(' '..data .. "\n") 
+      end
+
+      -- now that we're connected, drain the buffer
+      for i,line in ipairs(replbuffer) do
+         writetorepl(' ' .. line)
+      end
+
+      replbuffer = {}
+   end)
+
+   -- until we're connected, we need to buffer all input
+   writetorepl = function(data)
+      table.insert(replbuffer, data)
+   end
+end
 
 -- set up node and worker representation
 local nodes = {}
@@ -238,8 +297,6 @@ local set_selected_box = function(box)
 end
 
 
-commandbar.state = "BASE"
-
 local base_commands = [[
 (n)   node select
 (g)   group select
@@ -269,6 +326,7 @@ local set_node_state = function()
    commandbar.box.redraw() 
    
    iomanager.buffered_mode()
+   endrepl()
 end
 
 local set_group_state = function()
@@ -299,6 +357,13 @@ end
 local execute_command = function(comnumber)
    local commandname = config.command_list[comnumber]
 
+   if commandname == "repl" then
+      local domain = config.node_repls[commandbar.selected_node]
+      setrepl(domain)
+      set_repl_state()
+      return
+   end
+
    local command = config.commands[commandname]
 
    if command.args == "REPL" then
@@ -322,6 +387,12 @@ local execute_command = function(comnumber)
 end
 
 iomanager.handleInput(function(data)
+   debugbar.box.clear()
+   if commandbar.state == "REPL" then
+      writetorepl(data)
+      return
+   end
+
    if commandbar.state == "BASE" then
       local input = data:sub(1,1)
       if input == "n" then
@@ -345,6 +416,7 @@ iomanager.handleInput(function(data)
    end
 end)
 
+set_base_state()
 iomanager.onEscape(set_base_state)
 
 async.go()

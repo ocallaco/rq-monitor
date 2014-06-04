@@ -9,9 +9,18 @@ return function(height, width, starty, startx, parentbox)
       startx = startx + parentbox.startx
    end
 
+   --could make this configurable
+   box.maxlen = 1000
+
    box.win = curses.newwin(height, width, starty, startx)
 	curses.box(box.win, 0 , 0)		
    curses.wrefresh(box.win)
+
+   box.scroll_lock = true
+   -- true means locked.  false means scrolls to bottom
+   box.setscrolllock= function(scrolllock)
+      box.scroll_lock = scroll 
+   end
 
    box.redraw = function()
       local lines = math.min(height, #box.text - box.curpos[1])
@@ -36,6 +45,33 @@ return function(height, width, starty, startx, parentbox)
             widest_line = #line
          end
       end
+      -- might need to slice the text if > maxlen or error
+   end
+
+   box.append = function(text)
+      local lines =  stringx.split(text, "\n")
+
+      for i,line in ipairs(lines) do
+         if #line > widest_line then
+            widest_line = #line
+         end
+
+         table.insert(box.text,line)
+         if #box.text > box.maxlen then
+            table.remove(box.text, 1)
+         end
+      end
+
+      -- if we're not locked from scrolling jump to bottom
+      if not box.scroll_lock then
+         box.curpos[1] =  #box.text - height + 1
+      end
+
+   end
+
+   box.clear = function()
+      box.settext("\n")
+      box.redraw()
    end
 
    box.curpos = {0,0}

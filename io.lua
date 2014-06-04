@@ -2,6 +2,8 @@ local async = require 'async'
 local handle = require 'async.handle'
 local uv = require 'luv'
 
+local curses = require 'ncurses'
+
 return function(timers, clients)
    -- TODO: keyhandler[keystroke] should point to the handler function for each key
    -- if it's a multiple key sequence (up arrow, etc) then have it point to a similar table
