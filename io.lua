@@ -30,7 +30,6 @@ return function(timers, clients)
    local handle_function = function(data)
 
       local v = data:byte()
-      local nextbyte = data:byte(2)
          
       -- exit on ^C and ^D
       if v == 3 or v == 4 then
@@ -48,9 +47,27 @@ return function(timers, clients)
       end
 
       -- handle escape before buffer
-      if v == 27 and not nextbyte then
-         keyhandler.onEscape()
-         return
+      if v == 27 then 
+         local nextbyte = data:byte(2)
+         if not nextbyte then
+            keyhandler.onEscape()
+            return
+         elseif nextbyte == 91 then
+            local dirbyte = data:byte(3)
+            if dirbyte == 65 then
+               keyhandler.onUpArrow()
+               return
+            elseif dirbyte == 66 then
+               keyhandler.onDownArrow()
+               return
+            elseif dirbyte == 67 then
+               keyhandler.onRightArrow()
+               return
+            elseif dirbyte == 68 then
+               keyhandler.onLeftArrow()
+               return
+            end
+         end
       end
 
 
@@ -67,26 +84,6 @@ return function(timers, clients)
             end
             keyhandler.onBuffer(table.concat(buffer))
             return
-         end
-      end
-
-
-      if v == 27 then
-         if nextbyte == 91 then
-            local dirbyte = data:byte(3)
-            if dirbyte == 65 then
-               keyhandler.onUpArrow()
-               return
-            elseif dirbyte == 66 then
-               keyhandler.onDownArrow()
-               return
-            elseif dirbyte == 67 then
-               keyhandler.onRightArrow()
-               return
-            elseif dirbyte == 68 then
-               keyhandler.onLeftArrow()
-               return
-            end
          end
       end
 

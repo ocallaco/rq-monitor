@@ -88,7 +88,6 @@ if not opt.print then
    outputbar.width = width
    outputbar.height = 15
    outputbar.box = windowbox(outputbar.height, outputbar.width, debugbar.height + commandbar.height+1, 0)
-   outputbar.box.setscrolllock(false)
 
 
    -- put text buffer on debug bar
@@ -310,6 +309,7 @@ local set_base_state = function()
    commandbar.selected_node = nil
    
    iomanager.unbuffered_mode()
+   endrepl()
 end
 
 local set_node_state = function()
@@ -332,12 +332,15 @@ end
 local set_group_state = function()
    commandbar.state = "GROUP" 
    iomanager.buffered_mode()
+   endrepl()
 end
 
-local set_repl_state = function()
+local set_repl_state = function(initial_data)
    commandbar.state = "REPL"
    -- print output to debug window
    iomanager.buffered_mode()
+   iomanager.add_to_buffer(initial_data)
+   set_selected_box(outputbar.box)
 end
 
 local set_command_state = function()
@@ -368,8 +371,9 @@ local execute_command = function(comnumber)
 
    if command.args == "REPL" then
       -- put the command name onto the buffer
-      iomanager.add_to_buffer(command.name or commandname .. "(")
-      set_repl_state()
+            local domain = config.node_repls[commandbar.selected_node]
+      setrepl(domain)
+      set_repl_state((command.name or commandname) .. "(")
       return
    end
 

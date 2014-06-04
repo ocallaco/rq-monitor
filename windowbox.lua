@@ -15,10 +15,14 @@ return function(height, width, starty, startx, parentbox)
    box.win = curses.newwin(height, width, starty, startx)
 	curses.box(box.win, 0 , 0)		
    curses.wrefresh(box.win)
+   
+   local bottom = function()
+      return #box.text - height + 1
+   end
 
    box.scroll_lock = true
    -- true means locked.  false means scrolls to bottom
-   box.setscrolllock= function(scrolllock)
+   box.setscrolllock = function(scrolllock)
       box.scroll_lock = scroll 
    end
 
@@ -64,7 +68,7 @@ return function(height, width, starty, startx, parentbox)
 
       -- if we're not locked from scrolling jump to bottom
       if not box.scroll_lock then
-         box.curpos[1] =  #box.text - height + 1
+         box.curpos[1] =  bottom()
       end
 
    end
@@ -77,8 +81,13 @@ return function(height, width, starty, startx, parentbox)
    box.curpos = {0,0}
    -- (up -1 down +1), (left -1 right +1)
    box.scroll = function(ud, lr)
-      box.curpos[1] = math.max(0, math.min(box.curpos[1] + ud, #box.text - height + 1)) -- add 1 because of border
+      box.curpos[1] = math.max(0, math.min(box.curpos[1] + ud, bottom())) -- add 1 because of border
       box.curpos[2] = math.max(0, math.min(box.curpos[2] + lr, widest_line - width + 3)) -- adding 2 because of borders
+      if box.curpos[1] == bottom() then
+         box.setscrolllock(false)
+      else
+         box.setscrolllock(true)
+      end
    end
 
    return box
