@@ -12,6 +12,7 @@ local tcp = require 'async.tcp'
 local curses = require 'ncurses'
 
 local windowbox = require './windowbox.lua'
+local replmanager = require './replmanager.lua'
 
 local monitor_config = require './config'
 
@@ -30,6 +31,13 @@ if opt.cfg then
    config = monitor_config(config_table)
 else
    config = monitor_config({})
+end
+
+-- get a list of node groups
+local node_groups = {"all"}
+
+for name,list in pairs(config.node_groups) do
+   table.insert(node_groups, name)
 end
 
 
@@ -62,6 +70,8 @@ local iomanager = io_manager(timers, clients)
 local commandbar = {}
 local debugbar = {}
 local outputbar = {}
+
+local repl
 
 
 local HEIGHT = 10
@@ -100,59 +110,13 @@ if not opt.print then
       debugbar.box.redraw()
    end)
 
+   -- pipe repl output to outputbar
+   repl = replmanager(outputbar.box)
 
    display_startx = commandbar.width + 1
    display_starty = 0
 
    ROWS = math.floor((height - 21) / HEIGHT )
-end
-
-local replclient
-local replbuffer = {}
-
-
-local endrepl = function()
-   if replclient then replclient.close() end
-   replclient = nil
-end
-
-
-local writetorepl = function()
-end
-
-
-local setrepl = function(domain)
-
-   -- i hope we can just drop the old client and replace it with a new one without waiting for a callback
-   if replclient then
-      endrepl()
-   end
-
-   tcp.connect(domain, function(client)
-      -- receive results from server
-      client.ondata(function(data)
-         outputbar.box.append(data)
-         outputbar.box.redraw()
-      end)
-
-      replclient = client
-
-      writetorepl = function(data)
-         client.write(' '..data .. "\n") 
-      end
-
-      -- now that we're connected, drain the buffer
-      for i,line in ipairs(replbuffer) do
-         writetorepl(' ' .. line)
-      end
-
-      replbuffer = {}
-   end)
-
-   -- until we're connected, we need to buffer all input
-   writetorepl = function(data)
-      table.insert(replbuffer, data)
-   end
 end
 
 -- set up node and worker representation
@@ -307,9 +271,10 @@ local set_base_state = function()
    commandbar.box.redraw() 
    set_selected_box(nil)
    commandbar.selected_node = nil
+   commandbar.selected_group = nil
    
    iomanager.unbuffered_mode()
-   endrepl()
+   repl.kill()
 end
 
 local set_node_state = function()
@@ -326,13 +291,23 @@ local set_node_state = function()
    commandbar.box.redraw() 
    
    iomanager.buffered_mode()
-   endrepl()
+   repl.kill()
 end
 
 local set_group_state = function()
    commandbar.state = "GROUP" 
+   local node_text_list = {}
+   for i,groupname in ipairs(node_groups) do
+      table.insert(node_text_list, "(" .. i .. ") ")
+      table.insert(node_text_list, groupname)
+      table.insert(node_text_list, "\n")
+   end
+
+   commandbar.box.settext(table.concat(node_text_list))
+   commandbar.box.redraw() 
+
    iomanager.buffered_mode()
-   endrepl()
+   repl.kill()
 end
 
 local set_repl_state = function(initial_data)
@@ -357,12 +332,38 @@ local set_command_state = function()
    iomanager.buffered_mode()
 end
 
+local get_current_domains = function()
+   local domains
+   if commandbar.selected_node then
+      domains = {config.node_repls[commandbar.selected_node]}
+   elseif commandbar.selected_group then
+      local nodelist
+
+      if commandbar.selected_group == "all" then
+         nodelist = node_names
+      else
+         nodelist = config.node_groups[commandbar.selected_group] 
+      end
+      domains = {}
+      for i,name in ipairs(nodelist) do
+         if config.node_repls[name] then
+            table.insert(domains, config.node_repls[name])
+         end
+      end
+   else
+      -- TODO: handle this ERROR -- 
+      domains = {}
+   end
+
+   return domains
+end
+
 local execute_command = function(comnumber)
    local commandname = config.command_list[comnumber]
 
    if commandname == "repl" then
-      local domain = config.node_repls[commandbar.selected_node]
-      setrepl(domain)
+      local domains = get_current_domains()
+      repl.set(domains)
       set_repl_state()
       return
    end
@@ -371,8 +372,8 @@ local execute_command = function(comnumber)
 
    if command.args == "REPL" then
       -- put the command name onto the buffer
-            local domain = config.node_repls[commandbar.selected_node]
-      setrepl(domain)
+      local domains = get_current_domains()
+      repl.set(domains)
       set_repl_state((command.name or commandname) .. "(")
       return
    end
@@ -393,7 +394,7 @@ end
 iomanager.handleInput(function(data)
    debugbar.box.clear()
    if commandbar.state == "REPL" then
-      writetorepl(data)
+      repl.write(data)
       return
    end
 
@@ -401,6 +402,8 @@ iomanager.handleInput(function(data)
       local input = data:sub(1,1)
       if input == "n" then
          set_node_state()
+      elseif input == "g" then
+         set_group_state()
       end
       --TODO: make this handle numbers higher than 9
    elseif commandbar.state == "NODE" then
@@ -416,6 +419,14 @@ iomanager.handleInput(function(data)
       local comnumber = tonumber(data)
       if comnumber then
          execute_command(comnumber) 
+      end
+   elseif commandbar.state == "GROUP" then
+      local comnumber = tonumber(data)
+      if comnumber then
+         local groupname = node_groups[comnumber]
+         commandbar.selected_group = groupname
+         curses.printw(groupname)
+         set_command_state()
       end
    end
 end)

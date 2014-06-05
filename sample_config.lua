@@ -12,5 +12,10 @@ return {
       t5 = {host="localhost",port="10005"},
       t6 = {host="localhost",port="10006"},
       t7 = {host="localhost",port="10007"},
-   }
+   },
+
+   node_groups = {
+      conall = {"t1", "t3", "t5", "t7"},
+      llonac = {"t2", "t4", "t6"},
+   },
 }

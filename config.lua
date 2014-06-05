@@ -50,5 +50,7 @@ return function(config)
    base_config.group_list = groups
 
    base_config.node_repls = config.node_repls or {}
+
+   base_config.node_groups = config.node_groups or {}
    return base_config
 end

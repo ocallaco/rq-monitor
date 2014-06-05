@@ -27,10 +27,10 @@ return function(height, width, starty, startx, parentbox)
    end
 
    box.redraw = function()
-      local lines = math.min(height, #box.text - box.curpos[1])
-      for i=1,lines do
+--      local lines = math.min(height, #box.text - box.curpos[1])
+      for i=1,height do
          local l1 = box.text[i +  box.curpos[1]] or ""
-         local line = l1:sub(box.curpos[2], box.curpos[2] + width)
+         local line = l1:sub(box.curpos[2], box.curpos[2] + width) or ""
          curses.mvwprintw(box.win, i, 1, line)
          curses.wclrtoeol(box.win)
       end
@@ -83,6 +83,7 @@ return function(height, width, starty, startx, parentbox)
    box.scroll = function(ud, lr)
       box.curpos[1] = math.max(0, math.min(box.curpos[1] + ud, bottom())) -- add 1 because of border
       box.curpos[2] = math.max(0, math.min(box.curpos[2] + lr, widest_line - width + 3)) -- adding 2 because of borders
+
       if box.curpos[1] == bottom() then
          box.setscrolllock(false)
       else
