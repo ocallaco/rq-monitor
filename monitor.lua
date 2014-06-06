@@ -80,9 +80,15 @@ local ROWS = 6
 
 local display_startx = 0
 local display_starty = 0
-
+   
 if not opt.print then
    curses.initscr()
+   
+--   if curses.has_colors() ~= 0 then
+--      curses.start_color()
+--      curses.init_pair(1, 1, 0)
+--      curses.attron(curses.COLOR_PAIR(1))
+--   end
 
    local width = curses.getmaxx(curses.stdscr)
    local height = curses.getmaxy(curses.stdscr)
