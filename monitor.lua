@@ -63,16 +63,15 @@ end
 local timers = {}
 local clients = {}
 
-local iomanager = io_manager(timers, clients)
+local repl
+
+local iomanager = io_manager(timers, clients, repl)
 
 
 -- Set up the display
 local commandbar = {}
 local debugbar = {}
 local outputbar = {}
-
-local repl
-
 
 local HEIGHT = 10
 local WIDTH = 40
@@ -425,8 +424,8 @@ iomanager.handleInput(function(data)
       if comnumber then
          local nodename = node_names[comnumber]
          commandbar.selected_node = nodename
-         outputbar.box.append("NODE " .. nodename)
-         outputbar.box.redraw()
+--         outputbar.box.append("NODE " .. nodename)
+--         outputbar.box.redraw()
          set_selected_box(nodes[nodename].box)
          set_command_state()
       end
@@ -440,8 +439,8 @@ iomanager.handleInput(function(data)
       if comnumber then
          local groupname = node_groups[comnumber]
          commandbar.selected_group = groupname
-         outputbar.box.append("GROUP " .. groupname)
-         outputbar.box.redraw()
+--         outputbar.box.append("GROUP " .. groupname)
+--         outputbar.box.redraw()
          set_command_state()
       end
    end

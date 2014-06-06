@@ -63,7 +63,7 @@ return function(height, width, starty, startx, parentbox)
          local line_table = {""}
          
          for i,entry in ipairs(box.text[i +  box.curpos[1]] or {}) do
-            table.insert(line_table,entry[2])
+            table.insert(line_table,entry[2] or "")
          end
 
          local l1 = table.concat(line_table)

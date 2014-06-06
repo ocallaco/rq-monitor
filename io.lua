@@ -4,7 +4,7 @@ local uv = require 'luv'
 
 local curses = require 'ncurses'
 
-return function(timers, clients)
+return function(timers, clients, replmanager)
    -- TODO: keyhandler[keystroke] should point to the handler function for each key
    -- if it's a multiple key sequence (up arrow, etc) then have it point to a similar table
    local keyhandler = {
@@ -27,23 +27,42 @@ return function(timers, clients)
    local buffered = false
    local buffer = {}
 
-   local handle_function = function(data)
+   local handle_function
+
+   local exit_cleanly = function()
+
+      handle_function = function() end
+
+      for timer in ipairs(timers) do
+         timer.clear()
+      end
+
+      local counter = 0
+      for client in ipairs(clients) do
+         client.close()
+         counter = counter + 1
+      end
+
+      if replmanager then
+         replmanager.kill()
+      end
+
+      -- giving 2 seconds to kill all connections.  i hope that's enough
+      async.setTimeout(2000, function()
+         uv.tty_set_mode(io.stdin, 0)
+         curses.endwin()
+         os.exit()
+      end)
+
+   end
+
+   handle_function = function(data)
 
       local v = data:byte()
          
       -- exit on ^C and ^D
       if v == 3 or v == 4 then
-         uv.tty_set_mode(io.stdin, 0)
-         curses.endwin()
-         for timer in ipairs(timers) do
-            timer.clear()
-         end
-
-         for client in ipairs(clients) do
-            client.close()
-         end
-
-         os.exit()
+         exit_cleanly()
       end
 
       -- handle escape before buffer
