@@ -338,18 +338,24 @@ local set_command_state = function()
    iomanager.buffered_mode()
 end
 
+local get_selected_node_list = function()
+   local nodelist
+
+   if commandbar.selected_group == "all" then
+      nodelist = node_names
+   else
+      nodelist = config.node_groups[commandbar.selected_group] 
+   end
+
+   return nodelist
+end
+
 local get_current_domains = function()
    local domains
    if commandbar.selected_node then
       domains = {config.node_repls[commandbar.selected_node]}
    elseif commandbar.selected_group then
-      local nodelist
-
-      if commandbar.selected_group == "all" then
-         nodelist = node_names
-      else
-         nodelist = config.node_groups[commandbar.selected_group] 
-      end
+      local nodelist = get_selected_node_list()
       domains = {}
       for i,name in ipairs(nodelist) do
          if config.node_repls[name] then
@@ -387,8 +393,10 @@ local execute_command = function(comnumber)
    if commandbar.selected_node then
       server.issueCommand({"CONTROLCHANNEL:RQ:" .. commandbar.selected_node}, commandname, command.args or {}, function(res)  end)
    else
+      local nodelist = get_selected_node_list()
+
       -- figure out selected node group
-      for i,node in ipairs(node_names) do
+      for i,node in ipairs(nodelist) do
          server.issueCommand({"CONTROLCHANNEL:RQ:" .. node}, commandname, command.args or {}, function(res)  end)
       end
    end
@@ -417,7 +425,8 @@ iomanager.handleInput(function(data)
       if comnumber then
          local nodename = node_names[comnumber]
          commandbar.selected_node = nodename
-         curses.printw(nodename)
+         outputbar.box.append("NODE " .. nodename)
+         outputbar.box.redraw()
          set_selected_box(nodes[nodename].box)
          set_command_state()
       end
@@ -431,7 +440,8 @@ iomanager.handleInput(function(data)
       if comnumber then
          local groupname = node_groups[comnumber]
          commandbar.selected_group = groupname
-         curses.printw(groupname)
+         outputbar.box.append("GROUP " .. groupname)
+         outputbar.box.redraw()
          set_command_state()
       end
    end
