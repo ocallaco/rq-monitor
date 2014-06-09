@@ -1,6 +1,8 @@
 local REPL = "REPL"
 local ALL = "ALL"
 
+local json = require 'cjson'
+
 -- if response = REPL, that means enter a repl before issuing command to see response
 -- if args = REPL, that means open repl to set your own args
 -- repl command is a special case
@@ -18,6 +20,29 @@ return function(config)
 
       groups = {
          all = ALL
+      },
+
+      display_worker = {
+         default = function(nodename, workername, status)
+            local out = {}
+            local status_table
+            if type(status.last_status) == "string" then
+               status_table = json.decode(status.last_status)
+            else
+               status_table = status.last_status 
+            end
+
+            local age = os.time() - tonumber(status_table.time)
+
+            if age > 30 then 
+               table.insert(out, "*** ")
+            end
+            table.insert(out, workername) 
+            table.insert(out, ": ")
+            table.insert(out, status_table.state)
+            table.insert(out, "\n")
+            return table.concat(out)
+         end
       }
    }
 
@@ -30,6 +55,10 @@ return function(config)
    local commands = {}
    for k,v in pairs(base_config.commands) do
       table.insert(commands, k)
+   end
+
+   for k,v in pairs(config.display_worker or {}) do
+      base_config.display_worker[k] = v
    end
 
    table.sort(commands)
@@ -52,5 +81,7 @@ return function(config)
    base_config.node_repls = config.node_repls or {}
 
    base_config.node_groups = config.node_groups or {}
+
+   
    return base_config
 end

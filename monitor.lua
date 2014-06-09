@@ -149,9 +149,12 @@ local updateNode = function(nodename)
    table.insert(text_tbl, "\n")
 
    for i,workername in ipairs(nodeEntry.worker_names) do
-      table.insert(text_tbl, "Worker: " .. workername)   
-      table.insert(text_tbl, "\n")
+      if nodeEntry.workers[workername].status then
+         local display_worker = (config.display_worker["node"] and config.display_worker["node"][nodename]) or config.display_worker.default
+         table.insert(text_tbl, display_worker(nodename, workername, nodeEntry.workers[workername] and nodeEntry.workers[workername].status))   
+      end
    end
+   table.insert(text_tbl, "\n")
    
    box.settext(table.concat(text_tbl))
    box.redraw()
@@ -165,7 +168,7 @@ end
 
 table.insert(timers, async.setInterval(1000, update_last_seen))
 
-local onNewNode = function(nodename)
+local newNode = function(nodename)
    table.insert(node_names,nodename)
    local nodeEntry = {workers = {}, last_seen = os.time(), worker_names = {}}
    
@@ -178,13 +181,13 @@ local onNewNode = function(nodename)
    updateNode(nodename)
 end
 
-local onNewWorker = function(nodename, workername)
+local newWorker = function(nodename, workername)
    nodes[nodename].workers[workername] = {last_seen = os.time()}
    table.insert(nodes[nodename].worker_names, workername)
    updateNode(nodename)
 end
 
-local onDeadWorker = function(nodename, workername)
+local deadWorker = function(nodename, workername)
    nodes[nodename].workers[workername] = nil
    local index
    for i,w in ipairs(nodes[nodename].worker_names) do
@@ -198,7 +201,7 @@ local onDeadWorker = function(nodename, workername)
 end
 
 
-local onStatus = function(nodename, workername, status)
+local workerStatus = function(nodename, workername, status)
    --print(nodes)
    nodes[nodename].workers[workername].status = status
    nodes[nodename].workers[workername].last_seen = os.time()
@@ -218,7 +221,7 @@ fiber(function()
    table.insert(clients, subcli)
 
 
-   server = rs(writecli, subcli, "RQ", {onStatus = onStatus, onWorkerReady = onNewWorker, onNodeReady = onNewNode, onDeadWorker = onDeadWorker})
+   server = rs(writecli, subcli, "RQ", {onStatus = workerStatus, onWorkerReady = newWorker, onNodeReady = newNode, onWorkerDead = deadWorker})
    
 end)
 
@@ -321,6 +324,8 @@ local set_repl_state = function(initial_data)
    iomanager.buffered_mode()
    iomanager.add_to_buffer(initial_data)
    set_selected_box(outputbar.box)
+   commandbar.box.settext("In REPL.\nPress Esc to exit")
+   commandbar.box.redraw()
 end
 
 local set_command_state = function()

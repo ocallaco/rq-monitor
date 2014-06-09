@@ -47,10 +47,12 @@ return function(timers, clients, replmanager)
          replmanager.kill()
       end
 
+      curses.endwin()
+
+
       -- giving 2 seconds to kill all connections.  i hope that's enough
       async.setTimeout(2000, function()
          uv.tty_set_mode(io.stdin, 0)
-         curses.endwin()
          os.exit()
       end)
 
