@@ -16,7 +16,6 @@ local replmanager = require 'rq-monitor.replmanager'
 
 local monitor_config = require 'rq-monitor.config'
 
-redis_details = {host='localhost', port=6379}
 
 local opt = lapp([[
 thnode: a Torch compute node
@@ -32,6 +31,8 @@ if opt.cfg then
 else
    config = monitor_config({})
 end
+
+local redis_details = {host = config.redis_host or 'localhost', port = config.redis_port or 6379}
 
 -- get a list of node groups
 local node_groups = {"all"}
