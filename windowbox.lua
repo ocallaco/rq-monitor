@@ -53,7 +53,7 @@ return function(height, width, starty, startx, parentbox)
    box.scroll_lock = false
    -- true means locked.  false means scrolls to bottom
    box.setscrolllock = function(scrolllock)
-      box.scroll_lock = scroll 
+      box.scroll_lock = scrolllock 
    end
 
    box.redraw = function()

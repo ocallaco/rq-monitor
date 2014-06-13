@@ -1,7 +1,7 @@
 local rc = require 'redis-async'
 local rs = require 'redis-status.server'
 local rq = require 'redis-queue'
-local io_manager = require './io.lua'
+local io_manager = require 'rq-monitor.io'
 
 local uv = require 'luv'
 local async = require 'async'
@@ -11,10 +11,10 @@ local tcp = require 'async.tcp'
 
 local curses = require 'ncurses'
 
-local windowbox = require './windowbox.lua'
-local replmanager = require './replmanager.lua'
+local windowbox = require 'rq-monitor.windowbox'
+local replmanager = require 'rq-monitor.repl'
 
-local monitor_config = require './config'
+local monitor_config = require 'rq-monitor.config'
 
 redis_details = {host='localhost', port=6379}
 
@@ -169,14 +169,27 @@ end
 table.insert(timers, async.setInterval(1000, update_last_seen))
 
 local newNode = function(nodename)
-   table.insert(node_names,nodename)
-   local nodeEntry = {workers = {}, last_seen = os.time(), worker_names = {}}
-   
-   local numnodes = #node_names - 1
-   local startx = display_startx + math.floor(numnodes / ROWS) * WIDTH
-   local starty = display_starty + math.floor(numnodes * HEIGHT) % (ROWS * HEIGHT)
+   local found = false
+   for i,n in ipairs(node_names) do
+      if n == nodename then 
+         found = true
+         break 
+      end
+   end
 
-   nodeEntry.box = windowbox(HEIGHT, WIDTH, starty, startx)
+   local nodeEntry = {workers = {}, last_seen = os.time(), worker_names = {}}
+
+   if not found then
+      table.insert(node_names,nodename)
+   
+      local numnodes = #node_names - 1
+      local startx = display_startx + math.floor(numnodes / ROWS) * WIDTH
+      local starty = display_starty + math.floor(numnodes * HEIGHT) % (ROWS * HEIGHT)
+      nodeEntry.box = windowbox(HEIGHT, WIDTH, starty, startx)
+   else
+      nodeEntry.box = nodes[nodename].box
+   end
+      
    nodes[nodename] = nodeEntry
    updateNode(nodename)
 end
@@ -221,7 +234,9 @@ fiber(function()
    table.insert(clients, subcli)
 
 
-   server = rs(writecli, subcli, "RQ", {onStatus = workerStatus, onWorkerReady = newWorker, onNodeReady = newNode, onWorkerDead = deadWorker})
+   server = rs(writecli, subcli, config.namespace, {onStatus = workerStatus, onWorkerReady = newWorker, onNodeReady = newNode, onWorkerDead = deadWorker})
+   outputbar.box.append("Connected on namespace " .. config.namespace .. "\n")
+   outputbar.box.redraw()
    
 end)
 
@@ -395,13 +410,19 @@ local execute_command = function(comnumber)
    end
 
    if commandbar.selected_node then
-      server.issueCommand({"CONTROLCHANNEL:RQ:" .. commandbar.selected_node}, commandname, command.args or {}, function(res)  end)
+      server.issueCommand({"CONTROLCHANNEL:" .. config.namespace .. ":" .. commandbar.selected_node}, commandname, command.args or {}, function(res) 
+         outputbar.box.append("Issued command " .. commandname .. "\n")
+         outputbar.box.redraw() 
+      end)
    else
       local nodelist = get_selected_node_list()
 
       -- figure out selected node group
       for i,node in ipairs(nodelist) do
-         server.issueCommand({"CONTROLCHANNEL:RQ:" .. node}, commandname, command.args or {}, function(res)  end)
+         server.issueCommand({"CONTROLCHANNEL:" .. config.namespace .. ":" .. node}, commandname, command.args or {}, function(res)  
+            outputbar.box.append("Issued command " .. commandname .. "\n")
+            outputbar.box.redraw()
+         end)
       end
    end
 

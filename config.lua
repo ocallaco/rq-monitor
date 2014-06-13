@@ -8,6 +8,7 @@ local json = require 'cjson'
 -- repl command is a special case
 return function(config)
    local base_config = {
+      namespace = "RQ",
       commands = {   
          repl = {name = '', args = REPL},
          restart = {},
@@ -27,24 +28,29 @@ return function(config)
             local out = {}
             local status_table
             if type(status.last_status) == "string" then
-               status_table = json.decode(status.last_status)
+               ok, status_table = pcall(json.decode, status.last_status)
+               if not ok then
+                  status_table = {}
+               end
             else
                status_table = status.last_status 
             end
 
-            local age = os.time() - tonumber(status_table.time)
+            local age = os.time() - tonumber(status_table.time or 0)
 
             if age > 30 then 
                table.insert(out, "*** ")
             end
             table.insert(out, workername) 
             table.insert(out, ": ")
-            table.insert(out, status_table.state)
+            table.insert(out, status_table.state or "")
             table.insert(out, "\n")
             return table.concat(out)
          end
       }
    }
+
+   base_config.namespace = config.namespace or base_config.namespace
 
    if config.commands then
       for k,v in pairs(config.commands) do
