@@ -52,6 +52,9 @@ return function(config)
 
    base_config.namespace = config.namespace or base_config.namespace
 
+   base_config.redis_host = config.redis_host
+   base_config.redis_port = config.redis_port
+
    if config.commands then
       for k,v in pairs(config.commands) do
          base_config.commands[k] = v
