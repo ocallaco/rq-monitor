@@ -12,7 +12,7 @@ local tcp = require 'async.tcp'
 local curses = require 'ncurses'
 
 local windowbox = require 'rq-monitor.windowbox'
-local replmanager = require 'rq-monitor.repl'
+local replmanager = require 'rq-monitor.replmanager'
 
 local monitor_config = require 'rq-monitor.config'
 

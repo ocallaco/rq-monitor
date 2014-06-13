@@ -27,7 +27,7 @@ build = {
    modules = {
       ['rq-monitor'] = './monitor.lua',
       ['rq-monitor.io'] = './io.lua',
-      ['rq-monitor.repl'] = './replmanager.lua',
+      ['rq-monitor.replmananger'] = './replmanager.lua',
       ['rq-monitor.windowbox'] = './windowbox.lua',
       ['rq-monitor.config'] = './config.lua',
    }
