@@ -48,12 +48,14 @@ return function(config)
             return table.concat(out)
          end
       }
+
    }
 
    base_config.namespace = config.namespace or base_config.namespace
 
    base_config.redis_host = config.redis_host
    base_config.redis_port = config.redis_port
+   base_config.workerStatus = config.workerStatus or function() end
 
    if config.commands then
       for k,v in pairs(config.commands) do

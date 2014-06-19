@@ -10,6 +10,7 @@ local handle = require 'async.handle'
 local tcp = require 'async.tcp'
 
 local curses = require 'ncurses'
+local json = require 'cjson'
 
 local windowbox = require 'rq-monitor.windowbox'
 local replmanager = require 'rq-monitor.replmanager'
@@ -80,7 +81,7 @@ local ROWS = 6
 
 local display_startx = 0
 local display_starty = 0
-   
+
 if not opt.print then
    curses.initscr()
    
@@ -217,9 +218,23 @@ end
 
 local workerStatus = function(nodename, workername, status)
    --print(nodes)
+   if type(status) == "string" then
+      local ok, status_tbl = pcall(json.decode, status)
+      if not ok then
+         outputbar.box.append("Bad status received from worker " .. nodename .. " : " .. workername .. " " .. status)
+         outputbar.box.redraw()
+         status = {}
+      else
+         status = status_tbl
+      end
+   end
+
    nodes[nodename].workers[workername].status = status
    nodes[nodename].workers[workername].last_seen = os.time()
    nodes[nodename].last_seen = os.time()
+   
+   config.workerStatus(status)
+
    updateNode(nodename)
 end
 
